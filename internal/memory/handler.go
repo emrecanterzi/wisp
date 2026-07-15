@@ -50,7 +50,13 @@ func (h *Handler) InsertHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteHandler(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("key")
 
-	deleted := h.memory.Delete(key)
+	deleted, err := h.memory.Delete(key)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong"))
+		return
+
+	}
 	if !deleted {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte("Key not found"))

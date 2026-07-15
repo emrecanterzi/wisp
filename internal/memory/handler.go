@@ -42,7 +42,13 @@ func (h *Handler) InsertHandler(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("key")
 	value := r.URL.Query().Get("value")
 
-	h.memory.Insert(key, value)
+	err := h.memory.Insert(key, value)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Something went wrong"))
+		return
+
+	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Key-Value pair saved successfully"))
 }

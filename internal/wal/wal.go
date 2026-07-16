@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"os"
 )
@@ -64,4 +65,62 @@ func (w *WAL) Write(operation uint8, key, value []byte) error {
 
 	_, err := w.file.Write(buf.Bytes())
 	return err
+}
+
+func (w *WAL) Replay(fn func(operation uint8, key, value []byte)) error {
+	file, err := os.Open("data/wisp.wal")
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	opByte := make([]byte, 1)
+	keyLenBuf := make([]byte, 4)
+	var keyBuf []byte
+	valueLenBuf := make([]byte, 4)
+	var valueBuf []byte
+
+	for {
+		_, err := io.ReadFull(file, opByte)
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		operation := opByte[0]
+
+		_, err = io.ReadFull(file, keyLenBuf)
+		if err != nil {
+			return err
+		}
+
+		keyBuf = make([]byte, binary.BigEndian.Uint32(keyLenBuf))
+
+		_, err = io.ReadFull(file, keyBuf)
+		if err != nil {
+			return err
+		}
+
+		valueBuf = nil
+		if operation == 1 {
+			_, err = io.ReadFull(file, valueLenBuf)
+			if err != nil {
+				return err
+			}
+
+			valueBuf = make([]byte, binary.BigEndian.Uint32(valueLenBuf))
+
+			_, err = io.ReadFull(file, valueBuf)
+			if err != nil {
+				return err
+			}
+		}
+
+		fn(operation, keyBuf, valueBuf)
+	}
+
+	return nil
 }

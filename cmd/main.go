@@ -8,19 +8,23 @@ import (
 )
 
 func main() {
-	API := api.NewAPI()
+	srv := api.NewAPI()
 
 	skipList := skiplist.NewSkipList(4)
-	wal, err := wal.NewWAL()
+	w, err := wal.NewWAL()
 	if err != nil {
 		panic(err)
 	}
-	mem := memory.NewMemory(skipList, wal)
+	mem := memory.NewMemory(skipList, w)
+	err = mem.Startup()
+	if err != nil {
+		panic(err)
+	}
 
-	memoryHandler := memory.NewHandler(API, mem)
+	memoryHandler := memory.NewHandler(srv, mem)
 	memoryHandler.RegisterHandlers()
 
-	err = API.Start()
+	err = srv.Start()
 	if err != nil {
 		panic(err)
 	}

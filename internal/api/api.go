@@ -1,7 +1,7 @@
 package api
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -16,7 +16,7 @@ func NewAPI() *API {
 }
 
 func (a *API) Start() error {
-	fmt.Println("Starting server on :8080")
+	log.Printf("wisp starting on :8080")
 	err := http.ListenAndServe(":8080", a.mux)
 	return err
 }

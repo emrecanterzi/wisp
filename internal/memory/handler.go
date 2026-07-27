@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/emrecanterzi/wisp/internal/api"
@@ -27,7 +28,13 @@ func (h *Handler) RegisterHandlers() {
 func (h *Handler) GetHandler(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("key")
 
-	value, found := h.memory.Get(key)
+	value, found, err := h.memory.Get(key)
+	if err != nil {
+		log.Println(err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal Server Error"))
+		return
+	}
 	if !found {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte("Key not found"))

@@ -7,30 +7,37 @@ import (
 	"io"
 	"math"
 	"os"
+	"sync"
+	"time"
 )
 
 type WAL struct {
+	dir  string
 	file *os.File
+	mu   sync.Mutex
 }
 
-func NewWAL() (*WAL, error) {
-	err := os.MkdirAll("data", 0755)
+func NewWAL(dir string) (*WAL, error) {
+	err := os.MkdirAll(dir, 0755)
 	if err != nil {
 		return nil, err
 	}
 
-	file, err := os.OpenFile("data/wisp.wal", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(fmt.Sprintf("%s/%d.wal", dir, time.Now().UnixNano()), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, err
 	}
 
 	return &WAL{
+		dir:  dir,
 		file: file,
 	}, nil
 }
 
 // operation 0 is delete, operation 1 is insert
 func (w *WAL) Write(operation uint8, key, value []byte) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	var buf bytes.Buffer
 
 	if operation == 0 || operation == 1 {
@@ -67,13 +74,35 @@ func (w *WAL) Write(operation uint8, key, value []byte) error {
 	return err
 }
 
-func (w *WAL) Replay(fn func(operation uint8, key, value []byte)) error {
-	file, err := os.Open("data/wisp.wal")
+func (w *WAL) ReplyWals(fn func(operation uint8, key, value []byte)) error {
+	files, err := os.ReadDir(w.dir)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 
+	for _, entry := range files {
+		if entry.IsDir() {
+			continue
+		}
+
+		file, err := os.Open(w.dir + "/" + entry.Name())
+		if err != nil {
+			return err
+		}
+
+		if err := w.replay(file, fn); err != nil {
+			file.Close()
+			return err
+		}
+		if err := file.Close(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (w *WAL) replay(file *os.File, fn func(operation uint8, key, value []byte)) error {
 	opByte := make([]byte, 1)
 	keyLenBuf := make([]byte, 4)
 	var keyBuf []byte
@@ -120,6 +149,45 @@ func (w *WAL) Replay(fn func(operation uint8, key, value []byte)) error {
 		}
 
 		fn(operation, keyBuf, valueBuf)
+	}
+
+	return nil
+}
+
+func (w *WAL) Rotate() error {
+	w.mu.Lock()
+	err := w.file.Close()
+	if err != nil {
+		w.mu.Unlock()
+		return err
+	}
+	file, err := os.OpenFile(fmt.Sprintf("%s/%d.wal", w.dir, time.Now().UnixNano()), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		w.mu.Unlock()
+		return err
+	}
+	w.file = file
+	w.mu.Unlock()
+
+	return nil
+}
+
+func (w *WAL) Cleanup() error {
+	w.mu.Lock()
+	fileName := w.file.Name()
+	w.mu.Unlock()
+
+	files, err := os.ReadDir(w.dir)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		if file.IsDir() || w.dir+"/"+file.Name() == fileName {
+			continue
+		}
+
+		os.Remove(fmt.Sprintf("%s/%s", w.dir, file.Name()))
 	}
 
 	return nil

@@ -87,3 +87,14 @@ func (s *SkipList) Delete(key string) bool {
 
 	return isDeleted
 }
+
+func (s *SkipList) LoopAll(fn func(key, value string)) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	current := s.head.next[0]
+	for current != nil {
+		fn(current.key, current.value)
+		current = current.next[0]
+	}
+}

@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
+
+	"github.com/emrecanterzi/wisp/internal/types"
 )
 
 type entry struct {
@@ -55,57 +57,52 @@ func (e *entry) loadIndex() error {
 	return nil
 }
 
-func (e *entry) scan(startOffset, endOffset int64, key string) (string, bool, error) {
+func (e *entry) scan(startOffset, endOffset int64, key string) (*types.Record, error) {
 	offset := startOffset
 	file, err := os.Open(e.dataFile)
 	if err != nil {
-		return "", false, err
+		return nil, err
 	}
 	defer file.Close()
 
 	_, err = file.Seek(startOffset, io.SeekStart)
 	if err != nil {
-		return "", false, err
+		return nil, err
 	}
 
-	keyLenBuf := make([]byte, 4)
-	var keyBuf []byte
-	valueLenBuf := make([]byte, 4)
-	var valBuf []byte
+	recordLenBuf := make([]byte, 4)
+	var recordBuf []byte
 
 	for {
-		_, err = io.ReadFull(file, keyLenBuf)
-		if err == io.EOF {
-			break
-		}
+		_, err = io.ReadFull(file, recordLenBuf)
 		if err != nil {
-			return "", false, err
+			if err == io.EOF {
+				break
+			}
+			return nil, err
 		}
 
-		keyBuf = make([]byte, binary.BigEndian.Uint32(keyLenBuf))
-		_, err = io.ReadFull(file, keyBuf)
+		recordBuf = make([]byte, binary.BigEndian.Uint32(recordLenBuf))
+		_, err = io.ReadFull(file, recordBuf)
 		if err != nil {
-			return "", false, err
+			if err == io.EOF {
+				break
+			}
+			return nil, err
 		}
 
-		_, err = io.ReadFull(file, valueLenBuf)
+		rec, err := Decode(recordBuf)
 		if err != nil {
-			return "", false, err
+			return nil, err
 		}
 
-		valBuf = make([]byte, binary.BigEndian.Uint32(valueLenBuf))
-		_, err = io.ReadFull(file, valBuf)
-		if err != nil {
-			return "", false, err
-		}
-
-		if key == string(keyBuf) {
-			return string(valBuf), true, nil
-		} else if string(keyBuf) > key {
+		if key == rec.Key {
+			return &rec, nil
+		} else if rec.Key > key {
 			break
 		}
 
-		offset += int64(4 + len(keyBuf) + 4 + len(valBuf))
+		offset += 4 + int64(binary.BigEndian.Uint32(recordLenBuf))
 
 		if offset >= endOffset && endOffset != -1 {
 			break
@@ -113,5 +110,5 @@ func (e *entry) scan(startOffset, endOffset int64, key string) (string, bool, er
 
 	}
 
-	return "", false, nil
+	return nil, nil
 }

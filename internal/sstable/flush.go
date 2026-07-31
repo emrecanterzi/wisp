@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"os"
+
+	"github.com/emrecanterzi/wisp/internal/types"
 )
 
 type flushState struct {
@@ -14,38 +16,25 @@ type flushState struct {
 	index           []IndexEntry
 }
 
-func (fs *flushState) writeEntry(key, value string) error {
+func (fs *flushState) writeEntry(rec types.Record) error {
 	entryOffset := fs.offset
+	data := Encode(rec)
+	entrySize := len(data)
 
 	var buf bytes.Buffer
-
-	keyLen := int32(len(key))
-	valLen := int32(len(value))
-
-	if err := binary.Write(&buf, binary.BigEndian, keyLen); err != nil {
-		return err
-	}
-	if _, err := buf.Write([]byte(key)); err != nil {
-		return err
-	}
-	if err := binary.Write(&buf, binary.BigEndian, valLen); err != nil {
-		return err
-	}
-	if _, err := buf.Write([]byte(value)); err != nil {
-		return err
-	}
+	binary.Write(&buf, binary.BigEndian, int32(entrySize))
+	buf.Write(data)
 
 	_, err := fs.file.Write(buf.Bytes())
 	if err != nil {
 		return err
 	}
 
-	entrySize := 4 + len(key) + 4 + len(value)
-	fs.offset += int64(entrySize)
-	fs.bytesSinceIndex += entrySize
+	fs.offset += 4 + int64(entrySize)
+	fs.bytesSinceIndex += 4 + entrySize
 
 	if fs.bytesSinceIndex >= 4096 {
-		fs.index = append(fs.index, IndexEntry{Key: key, Offset: entryOffset})
+		fs.index = append(fs.index, IndexEntry{Key: rec.Key, Offset: entryOffset})
 		fs.bytesSinceIndex = 0
 	}
 

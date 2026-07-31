@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -84,6 +85,9 @@ func (w *WAL) ReplyWals(fn func(operation uint8, key, value []byte)) error {
 		if entry.IsDir() {
 			continue
 		}
+		if !strings.HasSuffix(entry.Name(), ".wal") {
+			continue
+		}
 
 		file, err := os.Open(w.dir + "/" + entry.Name())
 		if err != nil {
@@ -111,11 +115,11 @@ func (w *WAL) replay(file *os.File, fn func(operation uint8, key, value []byte))
 
 	for {
 		_, err := io.ReadFull(file, opByte)
-
-		if err == io.EOF {
-			break
-		}
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
 			return err
 		}
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/emrecanterzi/wisp/internal/skiplist"
+	"github.com/emrecanterzi/wisp/internal/types"
 )
 
 type SSTableManager struct {
@@ -63,12 +64,13 @@ func (sm *SSTableManager) Flush(sl *skiplist.SkipList) error {
 	fs := &flushState{file: file, indexFile: indexFile}
 
 	var callbackErr error
-	sl.LoopAll(func(key, value string) {
+	sl.LoopAll(func(op types.Op, key, value string) {
 		if callbackErr != nil {
 			return
 		}
+		rec := types.Record{Op: op, Key: key, Value: value}
 
-		callbackErr = fs.writeEntry(key, value)
+		callbackErr = fs.writeEntry(rec)
 	})
 
 	if callbackErr != nil {
@@ -89,7 +91,7 @@ func (sm *SSTableManager) Flush(sl *skiplist.SkipList) error {
 	return nil
 }
 
-func (sm *SSTableManager) Search(key string) (string, bool, error) {
+func (sm *SSTableManager) Search(key string) (*types.Record, error) {
 	sm.mu.RLock()
 	entries := sm.entries
 	sm.mu.RUnlock()
@@ -100,7 +102,7 @@ func (sm *SSTableManager) Search(key string) (string, bool, error) {
 		if !entry.loaded {
 			err := entry.loadIndex()
 			if err != nil {
-				return "", false, err
+				return nil, err
 			}
 		}
 
@@ -135,11 +137,11 @@ func (sm *SSTableManager) Search(key string) (string, bool, error) {
 			}
 		}
 
-		value, found, err := entry.scan(startOffset, endOffset, key)
-		if found || err != nil {
-			return value, found, err
+		rec, err := entry.scan(startOffset, endOffset, key)
+		if err != nil || rec != nil {
+			return rec, err
 		}
 	}
 
-	return "", false, nil
+	return nil, nil
 }

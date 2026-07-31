@@ -7,6 +7,7 @@ import (
 
 	"github.com/emrecanterzi/wisp/internal/skiplist"
 	"github.com/emrecanterzi/wisp/internal/sstable"
+	"github.com/emrecanterzi/wisp/internal/types"
 	"github.com/emrecanterzi/wisp/internal/wal"
 )
 
@@ -28,34 +29,35 @@ func NewMemory(w *wal.WAL, sm *sstable.SSTableManager) *Memory {
 		wal:      w,
 	}
 }
-
 func (m *Memory) Get(key string) (string, bool, error) {
 	m.mu.RLock()
 	sl := m.skipList
+	frozen := m.frozenSkipList
 	m.mu.RUnlock()
-	var val string
-	var found bool
 
-	val, found = sl.Get(key)
-	if found == false {
-		m.mu.RLock()
-		sl := m.frozenSkipList
-		m.mu.RUnlock()
+	rec := sl.Get(key)
 
-		if sl != nil {
-			val, found = sl.Get(key)
-		}
+	if rec == nil && frozen != nil {
+		rec = frozen.Get(key)
 	}
 
-	if found != true {
+	if rec == nil {
 		var err error
-		val, found, err = m.sm.Search(key)
+		rec, err = m.sm.Search(key)
 		if err != nil {
 			return "", false, err
 		}
 	}
 
-	return val, found, nil
+	if rec == nil {
+		return "", false, nil
+	}
+
+	if rec.Op == types.OpDelete {
+		return "", false, nil
+	}
+
+	return rec.Value, true, nil
 }
 
 func (m *Memory) Insert(key, value string) error {
@@ -74,15 +76,17 @@ func (m *Memory) Insert(key, value string) error {
 	return nil
 }
 
-func (m *Memory) Delete(key string) (bool, error) {
+func (m *Memory) Delete(key string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	err := m.wal.Write(0, []byte(key), nil)
 	if err != nil {
-		return false, err
+		return err
 	}
-	return m.skipList.Delete(key), nil
+
+	m.skipList.Delete(key)
+	return nil
 }
 
 func (m *Memory) Startup() error {

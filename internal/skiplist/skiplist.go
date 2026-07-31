@@ -3,9 +3,12 @@ package skiplist
 import (
 	"math/rand"
 	"sync"
+
+	"github.com/emrecanterzi/wisp/internal/types"
 )
 
 type node struct {
+	op    types.Op
 	key   string
 	value string
 	next  []*node
@@ -24,7 +27,7 @@ func NewSkipList(maxLevel int) *SkipList {
 	}
 }
 
-func (s *SkipList) Get(key string) (string, bool) {
+func (s *SkipList) Get(key string) *types.Record {
 	current := s.head
 
 	s.mu.RLock()
@@ -37,64 +40,62 @@ func (s *SkipList) Get(key string) (string, bool) {
 
 	current = current.next[0]
 	if current != nil && current.key == key {
-		return current.value, true
+		return &types.Record{
+			Op:    current.op,
+			Key:   current.key,
+			Value: current.value,
+		}
 	}
-	return "", false
+	return nil
 }
 
-func (s *SkipList) Insert(key, value string) {
+func (s *SkipList) set(key, value string, op types.Op) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	update := make([]*node, s.maxLevel)
+	current := s.head
+
+	for level := s.maxLevel - 1; level >= 0; level-- {
+		for current.next[level] != nil && current.next[level].key < key {
+			current = current.next[level]
+		}
+		update[level] = current
+	}
+
+	if current.next[0] != nil && current.next[0].key == key {
+		current.next[0].value = value
+		current.next[0].op = op
+		return
+	}
+
 	l := 0
 	for rand.Intn(2) == 0 && l < s.maxLevel-1 {
 		l++
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	newNode := &node{key: key, value: value, op: op, next: make([]*node, l+1)}
 
-	newNode := &node{key: key, value: value, next: make([]*node, l+1)}
-
-	current := s.head
-
-	for level := s.maxLevel - 1; level >= 0; level-- {
-		for current.next[level] != nil && current.next[level].key < key {
-			current = current.next[level]
-		}
-
-		if level <= l {
-			newNode.next[level] = current.next[level]
-			current.next[level] = newNode
-		}
+	for level := 0; level <= l; level++ {
+		newNode.next[level] = update[level].next[level]
+		update[level].next[level] = newNode
 	}
 }
 
-func (s *SkipList) Delete(key string) bool {
-	isDeleted := false
-	current := s.head
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for level := s.maxLevel - 1; level >= 0; level-- {
-		for current.next[level] != nil && current.next[level].key < key {
-			current = current.next[level]
-		}
-
-		if current.next[level] != nil && current.next[level].key == key {
-			current.next[level] = current.next[level].next[level]
-			isDeleted = true
-		}
-	}
-
-	return isDeleted
+func (s *SkipList) Insert(key, value string) {
+	s.set(key, value, types.OpSet)
 }
 
-func (s *SkipList) LoopAll(fn func(key, value string)) {
+func (s *SkipList) Delete(key string) {
+	s.set(key, "", types.OpDelete)
+}
+func (s *SkipList) LoopAll(fn func(op types.Op, key, value string)) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	current := s.head.next[0]
 	for current != nil {
-		fn(current.key, current.value)
+		fn(current.op, current.key, current.value)
 		current = current.next[0]
 	}
 }

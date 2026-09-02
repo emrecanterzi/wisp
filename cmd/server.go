@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"log"
@@ -7,30 +7,36 @@ import (
 	"github.com/emrecanterzi/wisp/internal/memory"
 	"github.com/emrecanterzi/wisp/internal/sstable"
 	"github.com/emrecanterzi/wisp/internal/wal"
+	"github.com/spf13/cobra"
 )
 
-func main() {
+var serverCmd = &cobra.Command{
+	Use:   "server",
+	Short: "Start the wisp server",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runServer()
+	},
+}
+
+func runServer() error {
 	srv := api.NewAPI()
 
 	w, err := wal.NewWAL("data/wal")
 	if err != nil {
-		log.Panic(err)
+		return err
 	}
 	sm, err := sstable.NewSSTable("data/sstable")
 	if err != nil {
-		log.Panic(err)
+		return err
 	}
 	mem := memory.NewMemory(w, sm)
-	err = mem.Startup()
-	if err != nil {
-		log.Panic(err)
+	if err := mem.Startup(); err != nil {
+		return err
 	}
 
 	memoryHandler := memory.NewHandler(srv, mem)
 	memoryHandler.RegisterHandlers()
 
-	err = srv.Start()
-	if err != nil {
-		log.Panic(err)
-	}
+	log.Println("wisp server starting")
+	return srv.Start()
 }

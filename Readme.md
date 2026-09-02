@@ -17,8 +17,36 @@ Actively being built. Current pieces: skip list + WAL + SSTable flush/search, WA
 
 ## Run
 
+Start the server (listens on `:8080`, stores data under `data/`):
+
 ```
-go run ./cmd
+go run . server
 ```
 
-Server starts on `:8080`.
+Or build the `wisp` binary:
+
+```
+go build -o wisp .
+./wisp server
+```
+
+## Usage
+
+With the server running, use the client commands:
+
+```
+wisp set foo bar     # store a key/value
+wisp get foo          # -> bar
+wisp delete foo       # remove a key
+```
+
+The client talks to `http://localhost:8080`.
+
+### HTTP API
+
+The commands above are thin wrappers over an HTTP interface on `:8080`, keyed by query parameters:
+
+Method    |   Request               | Response
+`GET`     |   `/?key=foo`           | value, or `404` if not found
+`POST`    |   `/?key=foo&value=bar` | `200` on success
+`DELETE`  |   `/?key=foo`           | `200` on success

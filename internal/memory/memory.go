@@ -113,7 +113,7 @@ func (m *Memory) Startup() error {
 				log.Println("flush triggered")
 				err := m.flushSSTable()
 				if err != nil {
-					log.Println(err)
+					log.Fatal(err)
 				}
 			}
 		}
